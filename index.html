@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>İzlenme Kontrolü — Kısa Video Analizi</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-paper: #F7F5F0;
+      --surface-card: #FFFFFF;
+      --surface-muted: #EFECE6;
+      --ink-primary: #181A1F;
+      --ink-secondary: #5A606A;
+      --accent-signal: #C84B31;
+      --accent-dark: #181A1F;
+      --border-hairline: #E3DFD7;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-paper);
+      color: var(--ink-primary);
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow-x: hidden;
+    }
+
+    .font-serif-editorial {
+      font-family: 'Instrument Serif', serif;
+    }
+
+    .font-mono-metric {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .editorial-card {
+      background-color: var(--surface-card);
+      border: 1px solid var(--border-hairline);
+      box-shadow: 0 14px 34px -18px rgba(24, 26, 31, 0.14), 0 2px 6px -1px rgba(24, 26, 31, 0.04);
+    }
+
+    .card-enter {
+      animation: fadeSlideIn 0.34s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    @keyframes fadeSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .answer-btn {
+      border: 1.5px solid var(--border-hairline);
+      background-color: var(--surface-card);
+      transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.14s ease, color 0.18s ease;
+    }
+
+    .answer-btn:hover {
+      border-color: var(--ink-primary);
+      background-color: var(--surface-muted);
+    }
+
+    .answer-btn:active {
+      transform: scale(0.99);
+    }
+
+    .answer-btn.is-selected-yes {
+      background-color: var(--ink-primary);
+      border-color: var(--ink-primary);
+      color: #F7F5F0;
+    }
+
+    .answer-btn.is-selected-no {
+      background-color: #FFF6F4;
+      border-color: var(--accent-signal);
+      color: var(--ink-primary);
+    }
+  </style>
+</head>
+<body class="antialiased selection:bg-[#C84B31]/15 selection:text-[#181A1F]">
+
+  <!-- Üst İlerleme ve Canlı İzlenme Potansiyeli Barı -->
+  <header class="w-full max-w-xl mx-auto px-4 sm:px-6 pt-5 pb-2">
+    <div class="flex items-center justify-between gap-3 mb-2.5">
+      <span id="progress-label" class="font-mono-metric text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5A606A]">
+        ADIM 00 / 08
+      </span>
+
+      <div class="flex items-center gap-2">
+        <span class="text-[11px] font-medium uppercase tracking-[0.08em] text-[#5A606A]">
+          İzlenme Potansiyeli
+        </span>
+        <span id="live-score-badge" class="font-mono-metric text-xs font-semibold px-2.5 py-0.5 rounded-md bg-[#EFECE6] text-[#181A1F] border border-[#E3DFD7]">
+          %0
+        </span>
+      </div>
+    </div>
+
+    <!-- İnce İlerleme Çizgisi -->
+    <div class="w-full h-1.5 rounded-full bg-[#E3DFD7] overflow-hidden">
+      <div
+        id="progress-bar-fill"
+        class="h-full bg-[#C84B31] rounded-full transition-all duration-300 ease-out"
+        style="width: 0%;"
+      ></div>
+    </div>
+  </header>
+
+  <!-- Ana Etkileşim Alanı -->
+  <main class="w-full max-w-xl mx-auto px-4 sm:px-6 py-4 flex-grow flex items-center justify-center">
+    <div id="stage" class="w-full"></div>
+  </main>
+
+  <!-- Alt Bilgi -->
+  <footer class="w-full max-w-xl mx-auto px-4 sm:px-6 pb-5 pt-2 text-center">
+    <p class="font-mono-metric text-[10px] uppercase tracking-[0.14em] text-[#5A606A]/80">
+      KISA VİDEO • İZLENME &amp; TUTUNMA KONTROLÜ
+    </p>
+  </footer>
+
+  <script>
+    /**
+     * Kısa videolarda izlenme ve tamamlanma oranını belirleyen 8 kritik kontrol noktası.
+     * Her madde izlenmeye gerçek etkisi olan bir kurgu/anlatım kararını sorgular.
+     */
+    const CHECKLIST_ITEMS = [
+      {
+        id: 1,
+        shortTitle: "İlk 2-3 saniyede net kanca ve vaat",
+        category: "AÇILIŞ KANCASI",
+        weight: 16,
+        question: "Videonun ilk 2-3 saniyesinde izleyiciye ne göreceğini veya neden kalması gerektiğini net bir cümleyle ya da görsel vaatle veriyor musun?",
+        yesText: "Evet, ilk saniyelerde ne olacağı belli",
+        noText: "Hayır, biraz sonradan oturuyor",
+        yesReaction: "İzleyici kaydırırken sebep arar. İlk birkaç saniyede vaadi koyduğunda kalma ihtimali doğrudan artar.",
+        noReaction: "İnsanlar videonun açılmasını beklemiyor. Vaat geç gelirse izleyici 'bunun sonu nereye varacak?' demeden geçiyor."
+      },
+      {
+        id: 2,
+        shortTitle: "Ölü boşlukların ve giriş gevezeliğinin kesilmesi",
+        category: "TEMPO & KESME",
+        weight: 14,
+        question: "Kayıt başındaki 'şey...', 'evet arkadaşlar', duraksama ya da boş beklemeleri kurguda sertçe kesip videoyu tam aksiyonun başladığı yerden açıyor musun?",
+        yesText: "Evet, boşlukları temizliyorum",
+        noText: "Hayır, bazen giriş uzuyor",
+        yesReaction: "Ölü saniyeler retention grafiğindeki en hızlı düşüş noktalarıdır. Temiz kesim videonun ağırlığını atar.",
+        noReaction: "Kurguda elinin gitmediği o 1-2 saniyelik duraksamalar birleşince izleyici daha konuya girmeden sıkılabiliyor."
+      },
+      {
+        id: 3,
+        shortTitle: "Görsel kırılmalar ve kadraj/açı değişimi",
+        category: "GÖRSEL RİTİM",
+        weight: 13,
+        question: "Tek bir sabit kadrajda uzun süre kalmak yerine, anlatım ilerledikçe açı, yakınlık, B-roll veya ekran detayı değiştirerek gözü canlı tutuyor musun?",
+        yesText: "Evet, görsel olarak hareketli",
+        noText: "Hayır, çoğu yerde tek açı var",
+        yesReaction: "Göz aynı kareye kilitlendiğinde dikkat dağılır. Küçük bir açı veya kare değişimi bile dikkati taze tutar.",
+        noReaction: "Anlattığın şey güzel olsa bile görsel tekdüze kaldığında izleyici bir noktadan sonra ekrana bakmayı bırakıyor."
+      },
+      {
+        id: 4,
+        shortTitle: "Açılış vaadine karşılık veren net sonuç / punchline",
+        category: "SONUÇ & KARŞILIK",
+        weight: 14,
+        question: "Başta açtığın konunun veya merakın karşılığını sonunda gerçekten veriyor musun; yoksa video yarım kalmış gibi mi bitiyor?",
+        yesText: "Evet, sonu vaadini karşılıyor",
+        noText: "Hayır, bazen ucu açık kalıyor",
+        yesReaction: "Baştaki merakın karşılığını almak izlenme tamamlama oranını yukarı çeker ve videoyu tatmin edici kılar.",
+        noReaction: "Güzel başlayan videonun sonu zayıf ya da yarım kaldığında izleyici emeğinin karşılığını alamamış gibi hissediyor."
+      },
+      {
+        id: 5,
+        shortTitle: "Ses netliği ve arka plan müziği dengesi",
+        category: "SES DENGESİ",
+        weight: 11,
+        question: "Konuşma veya ana ses net duyuluyor mu; arka plan müziği ya da ortam sesi cümleyi bastırmadan alttan mı yürüyor?",
+        yesText: "Evet, ses dengesi temiz",
+        noText: "Hayır, bazen müzik öne çıkıyor",
+        yesReaction: "Ses yormadığında izleyici videoda daha rahat kalır. Temiz ses, kurgunun görünmeyen omurgasıdır.",
+        noReaction: "Müzik sesi yüksek kalınca kelimeleri seçmek için ekstra dikkat gerekir; bu da izleyiciyi hızla düşürür."
+      },
+      {
+        id: 6,
+        shortTitle: "Altyazı okunabilirliği ve güvenli alan (safe zone)",
+        category: "EKRAN & SAFE ZONE",
+        weight: 10,
+        question: "Ekrandaki yazılar rahat okunuyor mu ve sağdaki/alttaki beğeni-yorum-açıklama butonlarının altında kalmayacak güvenli bölgede duruyor mu?",
+        yesText: "Evet, okunaklı ve güvenli alanda",
+        noText: "Hayır, bazen butonlara denk geliyor ya da hiç yazı eklemiyorum",
+        yesReaction: "Yazı güvenli bölgede durduğunda okuma kesilmez; video sessiz açıldığında bile akış bozulmaz.",
+        noReaction: "Arayüz ikonlarının altına giren yazı okunurken takılır. Kadrajın ortasına çekmek küçük ama etkili bir düzeltmedir. Kesinlikle yazı ekleeee"
+      },
+      {
+        id: 7,
+        shortTitle: "Tek net ana fikir (4 konuyu tek videoya tıkıştırmamak)",
+        category: "TEK ODAK",
+        weight: 11,
+        question: "Videoyu tek bir ana fikir etrafında kurguluyor musun, yoksa 'şunu da söyleyeyim, şu detayı da katayım' derken konu dağılıyor mu?",
+        yesText: "Evet, tek ana fikir var",
+        noText: "Hayır, bazen birkaç konu giriyor",
+        yesReaction: "Tek odak net bir iz bırakır. İzleyici videodan çıkarken aklında tek bir şey kalması çok daha güçlüdür.",
+        noReaction: "Birden fazla fikri tek kısacık videoya sıkıştırmak tempoyu şişirir ve neyin öne çıktığını belirsizleştirir."
+      },
+      {
+        id: 8,
+        shortTitle: "Tekrar izleten veya yorum/paylaşım tetikleyen bitiş",
+        category: "ETKİLEŞİM & TEKRAR",
+        weight: 11,
+        question: "Videonun sonunda izleyiciyi başa döndüren ufak bir detay, net bir fikir ayrılığı ya da 'bunu şu kişiye atmalık' dedirten bir kapanış var mı?",
+        yesText: "Evet, bir tetikleyici bırakıyorum",
+        noText: "Hayır, düz şekilde bitiyor",
+        yesReaction: "Tekrar izleme ve paylaşım sinyalleri, videonun ilk kitlenin ötesine geçmesinde en belirleyici faktörlerden biridir.",
+        noReaction: "Düz biten videolarda izleyici işini bitirip geçer. Küçük bir kapanış kıvılcımı videonun ömrünü uzatır."
+      }
+    ];
+
+    // Uygulama durumu
+    const state = {
+      view: 'intro', // 'intro' | 'question' | 'all_yes_check' | 'final'
+      currentIndex: 0,
+      answers: {} // { [id]: 'yes' | 'no' }
+    };
+
+    const stageEl = document.getElementById('stage');
+    const progressLabelEl = document.getElementById('progress-label');
+    const progressBarFillEl = document.getElementById('progress-bar-fill');
+    const liveScoreBadgeEl = document.getElementById('live-score-badge');
+
+    /**
+     * Verilen cevaplara göre 0-100 arası izlenme potansiyeli skoru hesaplar.
+     */
+    function computeScore() {
+      let earned = 0;
+      let totalPossible = 0;
+
+      CHECKLIST_ITEMS.forEach((item) => {
+        const ans = state.answers[item.id];
+        if (ans) {
+          totalPossible += item.weight;
+          if (ans === 'yes') {
+            earned += item.weight;
+          }
+        }
+      });
+
+      if (totalPossible === 0) return 0;
+      return Math.round((earned / totalPossible) * 100);
+    }
+
+    /**
+     * Tüm 8 soruya 'yes' verilip verilmediğini kontrol eder.
+     */
+    function isEveryAnswerYes() {
+      const answeredCount = Object.keys(state.answers).length;
+      if (answeredCount !== CHECKLIST_ITEMS.length) return false;
+      return CHECKLIST_ITEMS.every((item) => state.answers[item.id] === 'yes');
+    }
+
+    /**
+     * Üst barı mevcut adıma ve canlı skora göre günceller.
+     */
+    function updateHeader() {
+      const score = computeScore();
+      liveScoreBadgeEl.textContent = `%${score}`;
+
+      if (state.view === 'intro') {
+        progressLabelEl.textContent = 'BAŞLANGIÇ • 08 KONTROL';
+        progressBarFillEl.style.width = '0%';
+      } else if (state.view === 'question') {
+        const num = state.currentIndex + 1;
+        progressLabelEl.textContent = `ADIM 0${num} / 08`;
+        progressBarFillEl.style.width = `${(num / CHECKLIST_ITEMS.length) * 100}%`;
+      } else if (state.view === 'all_yes_check') {
+        progressLabelEl.textContent = 'EKSTRA YOKLAMA';
+        progressBarFillEl.style.width = '100%';
+      } else if (state.view === 'final') {
+        progressLabelEl.textContent = 'ÖZET • TAMAMLANDI';
+        progressBarFillEl.style.width = '100%';
+      }
+    }
+
+    /**
+     * Giriş ekranını render eder.
+     */
+    function renderIntro() {
+      state.view = 'intro';
+      updateHeader();
+
+      stageEl.innerHTML = `
+        <div class="editorial-card rounded-2xl p-6 sm:p-8 card-enter">
+          <div class="flex items-center justify-between mb-4">
+            <span class="font-mono-metric text-[11px] font-semibold uppercase tracking-[0.12em] text-[#C84B31]">
+              KISA VİDEO CHECKLIST
+            </span>
+            <span class="font-mono-metric text-[11px] text-[#5A606A]">
+              8 KRİTİK MADDE
+            </span>
+          </div>
+
+          <h1 class="font-serif-editorial text-4xl sm:text-5xl text-[#181A1F] leading-[1.08] mb-3.5">
+            Videoyu yayınlamadan önce gerçekten ne izletiyor?
+          </h1>
+
+          <p class="text-[15px] leading-relaxed text-[#5A606A] mb-6">
+            İzlenmeyi ve videonun sonuna kadar kalmayı etkileyen 8 temel noktaya tek tek bakalım. Her adımda dürüstçe <strong class="text-[#181A1F] font-semibold">Evet</strong> veya <strong class="text-[#181A1F] font-semibold">Hayır</strong> seç; anlık karşılığını görelim.
+          </p>
+
+          <div class="border-t border-[#E3DFD7] pt-5 mb-6 grid grid-cols-2 gap-3 text-xs">
+            <div class="rounded-xl bg-[#F7F5F0] p-3 border border-[#E3DFD7]/70">
+              <p class="font-mono-metric text-[10px] uppercase tracking-wider text-[#5A606A] mb-0.5">ODAK</p>
+              <p class="font-semibold text-[#181A1F]">Açılış, tempo, ses &amp; kurgu</p>
+            </div>
+            <div class="rounded-xl bg-[#F7F5F0] p-3 border border-[#E3DFD7]/70">
+              <p class="font-mono-metric text-[10px] uppercase tracking-wider text-[#5A606A] mb-0.5">SÜRE</p>
+              <p class="font-semibold text-[#181A1F]">Yaklaşık 1 dakika</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onclick="startChecklist()"
+            class="w-full py-3.5 px-5 rounded-xl bg-[#181A1F] hover:bg-[#2A2E37] text-[#F7F5F0] font-semibold text-[15px] flex items-center justify-center gap-2 transition-colors cursor-pointer"
+          >
+            <span>Kontrole Başla</span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+      `;
+    }
+
+    /**
+     * Aktif soru adımını ve seçime göre anlık teşhisi render eder.
+     */
+    function renderQuestion() {
+      state.view = 'question';
+      updateHeader();
+
+      const item = CHECKLIST_ITEMS[state.currentIndex];
+      const currentAnswer = state.answers[item.id] || null;
+      const isLast = state.currentIndex === CHECKLIST_ITEMS.length - 1;
+
+      const isYes = currentAnswer === 'yes';
+      const reactionText = currentAnswer ? (isYes ? item.yesReaction : item.noReaction) : '';
+
+      stageEl.innerHTML = `
+        <div class="editorial-card rounded-2xl p-6 sm:p-8 card-enter">
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <span class="font-mono-metric text-[11px] font-semibold uppercase tracking-[0.12em] text-[#C84B31]">
+              ${item.category}
+            </span>
+            <span class="font-mono-metric text-[11px] text-[#5A606A]">
+              0${item.currentStepNum || (state.currentIndex + 1)} / 08
+            </span>
+          </div>
+
+          <h2 class="font-serif-editorial text-[30px] sm:text-[34px] text-[#181A1F] leading-[1.15] mb-6">
+            ${item.question}
+          </h2>
+
+          <div class="space-y-2.5 mb-5">
+            <button
+              type="button"
+              onclick="handleSelect('yes')"
+              class="answer-btn w-full text-left px-4 py-3.5 rounded-xl flex items-center justify-between gap-3 cursor-pointer ${currentAnswer === 'yes' ? 'is-selected-yes' : ''}"
+            >
+              <span class="text-[14.5px] font-medium leading-snug">${item.yesText}</span>
+              <span class="font-mono-metric text-xs font-semibold shrink-0 px-2 py-0.5 rounded ${currentAnswer === 'yes' ? 'bg-[#F7F5F0]/15 text-[#F7F5F0]' : 'bg-[#F7F5F0] text-[#5A606A]'}">
+                EVET
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onclick="handleSelect('no')"
+              class="answer-btn w-full text-left px-4 py-3.5 rounded-xl flex items-center justify-between gap-3 cursor-pointer ${currentAnswer === 'no' ? 'is-selected-no' : ''}"
+            >
+              <span class="text-[14.5px] font-medium leading-snug">${item.noText}</span>
+              <span class="font-mono-metric text-xs font-semibold shrink-0 px-2 py-0.5 rounded ${currentAnswer === 'no' ? 'bg-[#C84B31] text-white' : 'bg-[#F7F5F0] text-[#5A606A]'}">
+                HAYIR
+              </span>
+            </button>
+          </div>
+
+          ${currentAnswer ? `
+            <div class="card-enter rounded-xl p-4 mb-5 border ${isYes ? 'bg-[#F7F5F0] border-[#E3DFD7]' : 'bg-[#FFF6F4] border-[#F0C8BE]'}">
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-mono-metric text-[10px] font-semibold uppercase tracking-[0.12em] ${isYes ? 'text-[#181A1F]' : 'text-[#C84B31]'}">
+                  ${isYes ? 'ETKİ NOTU' : 'DİKKAT NOKTASI'}
+                </span>
+                <span class="font-mono-metric text-[10px] text-[#5A606A]">
+                  ${isYes ? `+${item.weight} PUAN` : '0 PUAN'}
+                </span>
+              </div>
+              <p class="text-[13.5px] leading-relaxed text-[#181A1F]">
+                ${reactionText}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onclick="handleNext()"
+              class="card-enter w-full py-3.5 px-5 rounded-xl bg-[#181A1F] hover:bg-[#2A2E37] text-[#F7F5F0] font-semibold text-[14.5px] flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            >
+              <span>${isLast ? 'Sonuç Ekranına Geç' : 'Sonraki Adım'}</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          ` : `
+            <div class="h-11 flex items-center justify-center">
+              <p class="text-xs text-[#5A606A]">Bir seçenek seçtiğinde anlık yorum açılır</p>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    /**
+     * Tüm 8 soruya 'Evet' denildiğinde devreye giren kuru ve gerçekçi kontrol ekranı.
+     */
+    function renderAllYesCheck() {
+      state.view = 'all_yes_check';
+      updateHeader();
+
+      stageEl.innerHTML = `
+        <div class="editorial-card rounded-2xl p-6 sm:p-8 card-enter">
+          <div class="flex items-center justify-between mb-4">
+            <span class="font-mono-metric text-[11px] font-semibold uppercase tracking-[0.12em] text-[#C84B31]">
+              HEPSİNE EVET DEDİN BAKIYORUM
+            </span>
+            <span class="font-mono-metric text-[11px] font-semibold text-[#181A1F] bg-[#EFECE6] px-2.5 py-0.5 rounded">
+              8 / 8 EVET
+            </span>
+          </div>
+
+          <h2 class="font-serif-editorial text-3xl sm:text-[36px] text-[#181A1F] leading-[1.15] mb-4">
+            Yav sallama nerden hepsine dikkat ediyorsun
+          </h2>
+
+          <div class="space-y-3 text-[14.5px] leading-relaxed text-[#5A606A] mb-6">
+            <p>
+              Tamam hadi hepsini yaptın diyelim. Her video da tutacak diye bir şey yok. 1 videoyu 1000 kişi paylaşır 1 kişi tüm beğenmeleri alır. nasip kısmet hep bu işler
+            </p>
+            <p class="text-[#181A1F] font-medium">
+              Sıkma canını bu da halledilir
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onclick="renderFinal()"
+            class="w-full py-3.5 px-5 rounded-xl bg-[#181A1F] hover:bg-[#2A2E37] text-[#F7F5F0] font-semibold text-[14.5px] flex items-center justify-center gap-2 transition-colors cursor-pointer"
+          >
+            <span>Final Notunu Gör</span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+      `;
+    }
+
+    /**
+     * Final ekranını render eder: skor, kaçırılan en kritik 2 madde (varsa) ve kapanış mesajı.
+     */
+    function renderFinal() {
+      state.view = 'final';
+      updateHeader();
+
+      const score = computeScore();
+      const yesCount = CHECKLIST_ITEMS.filter((item) => state.answers[item.id] === 'yes').length;
+
+      // Kaçırılan ('no') maddeleri ağırlığına göre sıralayıp ilk 2 kritik maddeyi seç
+      const missedItems = CHECKLIST_ITEMS
+        .filter((item) => state.answers[item.id] === 'no')
+        .sort((a, b) => b.weight - a.weight);
+
+      const topTwoMissed = missedItems.slice(0, 2);
+
+      let missedSectionHtml = '';
+      if (topTwoMissed.length > 0) {
+        missedSectionHtml = `
+          <div class="rounded-xl bg-[#F7F5F0] border border-[#E3DFD7] p-4 mb-6">
+            <p class="font-mono-metric text-[10px] font-semibold uppercase tracking-[0.12em] text-[#C84B31] mb-2.5">
+              ÖNE ÇIKAN KRİTİK 2 NOKTA
+            </p>
+            <ul class="space-y-2">
+              ${topTwoMissed.map((m, idx) => `
+                <li class="flex items-start gap-2.5 text-[13.5px] leading-snug text-[#181A1F]">
+                  <span class="font-mono-metric text-xs font-semibold text-[#C84B31] mt-0.5">0${idx + 1}.</span>
+                  <span>${m.shortTitle}</span>
+                </li>
+              `).join('')}
+            </ul>
+          </div>
+        `;
+      } else {
+        missedSectionHtml = `
+          <div class="rounded-xl bg-[#F7F5F0] border border-[#E3DFD7] p-4 mb-6">
+            <p class="font-mono-metric text-[10px] font-semibold uppercase tracking-[0.12em] text-[#181A1F] mb-1">
+              KRİTİK EKSİK KAYDI
+            </p>
+            <p class="text-[13.5px] text-[#5A606A]">
+              Listelenen 8 kritik maddede "Hayır" seçilen bir nokta görünmüyor.
+            </p>
+          </div>
+        `;
+      }
+
+      stageEl.innerHTML = `
+        <div class="editorial-card rounded-2xl p-6 sm:p-8 card-enter">
+          <div class="flex items-center justify-between gap-2 pb-4 mb-5 border-b border-[#E3DFD7]">
+            <div>
+              <p class="font-mono-metric text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5A606A]">
+                İZLENME POTANSİYELİ SKORU
+              </p>
+              <p class="font-mono-metric text-3xl font-semibold text-[#181A1F] mt-0.5">
+                %${score}
+              </p>
+            </div>
+            <div class="text-right">
+              <p class="font-mono-metric text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5A606A]">
+                KARŞILANAN MADDE
+              </p>
+              <p class="font-mono-metric text-sm font-semibold text-[#181A1F] mt-1">
+                ${yesCount} / ${CHECKLIST_ITEMS.length}
+              </p>
+            </div>
+          </div>
+
+          ${missedSectionHtml}
+
+          <div class="space-y-3 text-[15px] leading-[1.68] text-[#181A1F] mb-7">
+            <p class="font-serif-editorial text-[28px] sm:text-[32px] leading-[1.18] text-[#181A1F]">
+              Olsun, sıkma canını bak işte bunlar dikkat etmen gereken noktalar. Böyle böyle öğreneceksin ve HEPSİNİ HER ŞEYİ SEN KENDİN YAPACAKSIN. Kimseye karşılık vermeden
+            </p>
+            <p class="text-[#3A3F47]">
+                Ayrıca bazen bazı şeylerin doğru 1 adetcik kişiye ulaşması milyonlara ulaşmasından daha kıymetli olur.
+            </p>
+            <p class="font-medium text-[#181A1F]">
+              Bak mesela bu da benim en kısa uçuş anım. O zamanlar yeni ünideyiz. Tatil olmuş urfaya gideceğim. otobüs 17 saat sürüyor. Yanımda da arkadaşım var serhat. o da ev arkadaşım oldu 3 sene bu arada. Neyse onun da ailesi o ara urfada yaşıyor şansa. Napalım napalım iki salak şöyle düşündük. urfaya direkt uçuş yok o zamanlar, antepe ineceğiz tek seçenek bu. O da çok pahalı. dedik ki adanaya uçakla gidelim adanadan otobüsle devam ederiz. neyse atladık hemen biletleri aldık falan. o aralar şakir paşa havaalanı var adanada. Uçak sabah 5te. paramız da yok taksiyle gitmeye. akşam 12de çıktık gittik. saaat 5e kadar orda bekledik. Bi teyze de vardı bizimle bize portakal verdi aç karnımızı doyurdu saolsun. Sabah oldu geldi vakit. Bindik uçağa 40 dk bile sürmedi indik. şakir paşa zaten çok kötü bi havalimanı. çevresi bulunduğu yer de öyle mnxnmcnmv. çıktık ordan otogara geçmeye çalışıyoruz. Neyse şöyle böyle derken bir şekil de otogara geçtik. Bu defa da otobüsü bekledik orda. Ki adana otogarı dünyanın en kötü otogarıdır muhtemelen ncxvcnmxmv. Neyse geldi otobüs bindik bi şekilde urfaya yetiştik. Ama işte iki salak direkt antepe inseydik veya otobüse binseydik, hem daha erken urfada olacaktık hem daha az yorulacaktık,  hem de daha az paramız gidecekti uykusuz da kalmaycaktık...
+                Velhasıl kelam en uzun yolculuğum ve en kısa uçuşum oldu bu...
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onclick="resetChecklist()"
+            class="w-full py-3 px-4 rounded-xl border border-[#E3DFD7] bg-[#F7F5F0] hover:bg-[#EFECE6] text-[#181A1F] font-medium text-sm transition-colors cursor-pointer"
+          >
+            Baştan Kontrol Et
+          </button>
+        </div>
+      `;
+    }
+
+    // Etkileşim fonksiyonları
+    function startChecklist() {
+      state.answers = {};
+      state.currentIndex = 0;
+      renderQuestion();
+    }
+
+    function handleSelect(choice) {
+      const currentItem = CHECKLIST_ITEMS[state.currentIndex];
+      state.answers[currentItem.id] = choice;
+      renderQuestion();
+    }
+
+    function handleNext() {
+      if (state.currentIndex < CHECKLIST_ITEMS.length - 1) {
+        state.currentIndex += 1;
+        renderQuestion();
+      } else if (isEveryAnswerYes()) {
+        renderAllYesCheck();
+      } else {
+        renderFinal();
+      }
+    }
+
+    function resetChecklist() {
+      state.answers = {};
+      state.currentIndex = 0;
+      renderIntro();
+    }
+
+    // İlk yüklemede giriş ekranını aç
+    window.addEventListener('DOMContentLoaded', renderIntro);
+  </script>
+</body>
+</html>
